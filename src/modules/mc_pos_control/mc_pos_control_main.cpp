@@ -68,6 +68,7 @@
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/commander_state.h>
 
 #include <float.h>
 #include <lib/ecl/geo/geo.h>
@@ -149,6 +150,7 @@ private:
 	int		_local_pos_sub;			/**< vehicle local position */
 	int		_pos_sp_triplet_sub;		/**< position setpoint triplet */
 	int		_home_pos_sub; 			/**< home position */
+	int		_commander_state_sub;
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
@@ -165,6 +167,7 @@ private:
 	struct position_setpoint_triplet_s		_pos_sp_triplet;	/**< vehicle global position setpoint triplet */
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct home_position_s				_home_pos; 				/**< home position */
+	struct commander_state_s			_commander_state;
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::MPC_FLT_TSK>) _test_flight_tasks, /**< temporary flag for the transition to flight tasks */
@@ -440,6 +443,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_local_pos_sub(-1),
 	_pos_sp_triplet_sub(-1),
 	_home_pos_sub(-1),
+	_commander_state_sub(-1),
 
 	/* publications */
 	_att_sp_pub(nullptr),
@@ -720,7 +724,7 @@ MulticopterPositionControl::poll_subscriptions()
 			if (_xy_reset_counter != _local_pos.xy_reset_counter) {
 				_pos_sp(0) = _local_pos.x;
 				_pos_sp(1) = _local_pos.y;
-			}
+			}main
 		}
 
 		// update the reset counters in any case
@@ -752,6 +756,14 @@ MulticopterPositionControl::poll_subscriptions()
 
 	if (updated) {
 		orb_copy(ORB_ID(home_position), _home_pos_sub, &_home_pos);
+
+	}
+
+	orb_check(_commander_state_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(commander_state), _commander_state_sub, &_commander_state);
+
 	}
 }
 
@@ -2912,6 +2924,7 @@ MulticopterPositionControl::task_main()
 	_local_pos_sub = orb_subscribe(ORB_ID(vehicle_local_position));
 	_pos_sp_triplet_sub = orb_subscribe(ORB_ID(position_setpoint_triplet));
 	_home_pos_sub = orb_subscribe(ORB_ID(home_position));
+	_commander_state_sub = orb_subscribe(ORB_ID(commander_state));
 
 	parameters_update(true);
 
@@ -2952,6 +2965,15 @@ MulticopterPositionControl::task_main()
 		poll_subscriptions();
 
 		parameters_update(false);
+
+		float tilt_max_normal = _tilt_max_air;
+		float tilt_max_rattitude = (float)0.1 * _tilt_max_air;
+		if(_commander_state.main_state == 9){
+			_tilt_max_air = tilt_max_rattitude;
+		}
+		else(
+			_tilt_max_air = tilt_max_normal;
+		)
 
 		hrt_abstime t = hrt_absolute_time();
 		const float dt = t_prev != 0 ? (t - t_prev) / 1e6f : 0.004f;
